@@ -1,0 +1,7 @@
+.env
+__pycache__/
+*.pyc
+favorites.json
+.DS_Store
+.streamlit/secrets.toml
+.claude/
