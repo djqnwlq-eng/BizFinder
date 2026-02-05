@@ -203,6 +203,142 @@ def get_api_status():
         return False
 
 
+def extract_keywords_from_description(description):
+    """
+    자연어 설명에서 검색 키워드를 추출하는 함수 (정밀 버전)
+
+    Args:
+        description: 사용자가 입력한 자연어 설명
+
+    Returns:
+        list: 추출된 키워드 리스트 (구체적 조합)
+    """
+    extracted = {
+        "age": None,
+        "region": None,
+        "business": None,
+        "needs": []
+    }
+
+    # 1. 연령대 추출
+    if any(word in description for word in ["청년", "20대", "30대", "젊은"]):
+        extracted["age"] = "청년"
+    elif any(word in description for word in ["중장년", "40대", "50대", "중년"]):
+        extracted["age"] = "중장년"
+    elif any(word in description for word in ["시니어", "60대", "70대", "어르신", "고령"]):
+        extracted["age"] = "시니어"
+
+    # 2. 지역 추출 (시/군 단위까지)
+    city_to_region = {
+        "군산": "전북", "전주": "전북", "익산": "전북", "정읍": "전북",
+        "수원": "경기", "성남": "경기", "고양": "경기", "용인": "경기", "안양": "경기",
+        "창원": "경남", "김해": "경남", "진주": "경남", "양산": "경남",
+        "포항": "경북", "구미": "경북", "경주": "경북", "안동": "경북",
+        "천안": "충남", "아산": "충남", "서산": "충남",
+        "청주": "충북", "충주": "충북", "제천": "충북",
+        "목포": "전남", "여수": "전남", "순천": "전남", "광양": "전남",
+        "춘천": "강원", "원주": "강원", "강릉": "강원",
+    }
+    regions = ["서울", "부산", "대구", "인천", "광주", "대전", "울산", "세종",
+               "경기", "강원", "충북", "충남", "전북", "전남", "경북", "경남", "제주"]
+
+    # 시/군 먼저 체크
+    for city, region in city_to_region.items():
+        if city in description:
+            extracted["region"] = region
+            break
+
+    # 시/도 체크
+    if not extracted["region"]:
+        for region in regions:
+            if region in description:
+                extracted["region"] = region
+                break
+
+    # 3. 업종/사업 유형 추출 (구체적)
+    business_specific = {
+        "온라인쇼핑몰": "온라인쇼핑몰", "쇼핑몰": "온라인쇼핑몰", "온라인몰": "온라인쇼핑몰",
+        "스마트스토어": "온라인쇼핑몰", "네이버스토어": "온라인쇼핑몰",
+        "카페": "카페", "커피": "카페", "커피숍": "카페",
+        "식당": "음식점", "음식점": "음식점", "레스토랑": "음식점", "요식업": "음식점",
+        "제조": "제조", "공장": "제조", "생산": "제조",
+        "펜션": "숙박", "호텔": "숙박", "모텔": "숙박", "민박": "숙박", "게스트하우스": "숙박",
+        "학원": "교육서비스", "교습소": "교육서비스", "과외": "교육서비스",
+        "배달": "배달", "배달업": "배달",
+        "미용": "미용", "미용실": "미용", "헤어샵": "미용", "네일": "미용",
+        "병원": "의료", "의원": "의료", "클리닉": "의료", "한의원": "의료",
+    }
+    for word, biz_type in business_specific.items():
+        if word in description:
+            extracted["business"] = biz_type
+            break
+
+    # 4. 구체적 니즈/목적 추출
+    needs_keywords = {
+        "상세페이지": "상세페이지",
+        "홈페이지": "홈페이지",
+        "마케팅": "마케팅",
+        "홍보": "홍보",
+        "광고": "광고",
+        "디자인": "디자인",
+        "브랜딩": "브랜딩",
+        "자금": "자금지원",
+        "대출": "대출",
+        "운영자금": "운영자금",
+        "창업": "창업",
+        "수출": "수출",
+        "해외진출": "수출",
+        "특허": "특허",
+        "인증": "인증",
+        "컨설팅": "컨설팅",
+        "교육": "교육",
+        "인력": "인력",
+        "고용": "고용",
+        "채용": "채용",
+        "스마트": "스마트화",
+        "디지털": "디지털전환",
+        "온라인": "온라인",
+        "배송": "물류",
+        "물류": "물류",
+        "포장": "포장",
+        "R&D": "R&D",
+        "연구": "연구개발",
+        "개발": "개발",
+    }
+    for word, need in needs_keywords.items():
+        if word in description:
+            if need not in extracted["needs"]:
+                extracted["needs"].append(need)
+            if len(extracted["needs"]) >= 2:
+                break
+
+    # 5. 키워드 조합 생성 (정밀 검색용)
+    keywords = []
+
+    # 핵심 니즈 + 업종 조합
+    if extracted["needs"] and extracted["business"]:
+        keywords.append(f"{extracted['business']} {extracted['needs'][0]}")
+
+    # 지역 + 니즈 조합
+    if extracted["region"] and extracted["needs"]:
+        keywords.append(f"{extracted['region']} {extracted['needs'][0]}")
+
+    # 단독 니즈 키워드
+    for need in extracted["needs"]:
+        if len(keywords) < 3:
+            keywords.append(need)
+
+    # 연령대 + 니즈
+    if extracted["age"] and extracted["needs"]:
+        keywords.append(f"{extracted['age']} {extracted['needs'][0]}")
+
+    # 기본값
+    if not keywords:
+        keywords.append("소상공인")
+
+    return keywords[:3]  # 더 정밀한 검색을 위해 3개로 제한
+
+
 def build_search_keywords(filters_dict):
     """
     사용자 선택 조건을 기반으로 검색 키워드 조합을 생성하는 함수
@@ -214,6 +350,16 @@ def build_search_keywords(filters_dict):
         list: 검색할 키워드 리스트 (최대 4개)
     """
     keywords = []
+
+    # 최우선: 자유 설명 모드
+    free_description = filters_dict.get("free_description")
+    if free_description:
+        return extract_keywords_from_description(free_description)
+
+    # 0순위: 자유 검색어
+    free_keyword = filters_dict.get("free_keyword")
+    if free_keyword:
+        keywords.append(free_keyword)
 
     # 1순위: 연령대
     age_group = filters_dict.get("age_group")

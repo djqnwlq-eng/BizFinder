@@ -1,7 +1,19 @@
 # 유틸리티 함수 모듈
 # D-day 계산, 상태 뱃지, 날짜 포맷 등
 
+import re
 from datetime import datetime
+
+
+def strip_html_tags(text):
+    """HTML 태그 제거"""
+    if not text:
+        return ""
+    # HTML 태그 제거
+    clean = re.sub(r'<[^>]+>', ' ', str(text))
+    # 연속 공백 정리
+    clean = re.sub(r'\s+', ' ', clean)
+    return clean.strip()
 
 
 def calculate_dday(end_date_str):
@@ -134,14 +146,15 @@ def get_card_html(program, dday, status_badge, dday_text, dday_color):
     """지원사업 카드 HTML 생성"""
     status_text, status_bg, status_color = status_badge
 
-    title = program.get("title", "제목 없음")
-    agency = program.get("agency", "-")
-    category = program.get("category", "-")
+    title = strip_html_tags(program.get("title", "제목 없음"))
+    agency = strip_html_tags(program.get("agency", "-"))
+    category = strip_html_tags(program.get("category", "-"))
     start_date = format_date(program.get("start_date", ""))
     end_date = format_date(program.get("end_date", ""))
-    target = program.get("target", "-")
-    description = program.get("description", "-")
+    target = strip_html_tags(program.get("target", "-"))
+    description = strip_html_tags(program.get("description", "-"))
     link = program.get("link", "")
+    similarity_score = program.get("similarity_score")
 
     if len(description) > 150:
         description = description[:150] + "..."
@@ -150,9 +163,31 @@ def get_card_html(program, dday, status_badge, dday_text, dday_color):
     if link:
         link_html = f'<div style="margin-top: 16px; text-align: center;"><a href="{link}" target="_blank" style="display: inline-block; padding: 10px 24px; background: #FF6B35; color: white; text-decoration: none; border-radius: 8px; font-weight: 500;">📄 상세보기</a></div>'
 
+    # 유사도 점수 뱃지 (있을 경우만)
+    similarity_html = ""
+    if similarity_score is not None:
+        score_pct = int(similarity_score * 100)
+        is_exact_match = program.get("is_exact_match", False)
+        matched_keywords = program.get("matched_keywords", [])
+
+        if is_exact_match and matched_keywords:
+            # 정확 매칭: 키워드 표시 (파란색)
+            kw_text = ", ".join(matched_keywords[:3])
+            similarity_html = f'<span style="background: #1976d2; color: white; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 500;">✅ 키워드 매칭: {kw_text}</span>'
+        else:
+            # 유사 결과
+            if score_pct >= 70:
+                score_color = "#00c853"
+            elif score_pct >= 50:
+                score_color = "#ffa500"
+            else:
+                score_color = "#666"
+            similarity_html = f'<span style="background: {score_color}; color: white; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 500;">🔍 유사도 {score_pct}%</span>'
+
     card_html = f'''<div style="background: white; border-radius: 12px; padding: 20px; margin-bottom: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); border: 1px solid #eee;">
 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
 <div style="display: flex; gap: 8px; align-items: center;">
+{similarity_html}
 <span style="background: {status_bg}; color: {status_color}; padding: 4px 10px; border-radius: 20px; font-size: 13px; font-weight: 500;">{status_text}</span>
 <span style="color: {dday_color}; font-weight: bold; font-size: 14px;">{dday_text}</span>
 </div>
