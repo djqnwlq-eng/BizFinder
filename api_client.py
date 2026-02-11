@@ -6,9 +6,11 @@ import time
 import requests
 import xml.etree.ElementTree as ET
 import streamlit as st
-from dotenv import load_dotenv
-
-load_dotenv()
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 # API 기본 설정
 API_URL = "https://www.bizinfo.go.kr/uss/rss/bizinfoApi.do"
