@@ -1,23 +1,24 @@
 # 시맨틱 필터링 모듈
-# 임베딩 기반 유사도 검색으로 정밀한 지원사업 매칭
+# TF-IDF 기반 유사도 검색으로 정밀한 지원사업 매칭
 
-from sentence_transformers import SentenceTransformer
+from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
 
-# 한국어 지원 임베딩 모델 (가벼움)
-MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
-
-# 모델 캐싱 (한 번만 로드)
-_model = None
+# TF-IDF 벡터라이저 (한국어 단어 단위 분석)
+_vectorizer = None
 
 
-def get_model():
-    """임베딩 모델 로드 (싱글톤 패턴)"""
-    global _model
-    if _model is None:
-        _model = SentenceTransformer(MODEL_NAME)
-    return _model
+def get_vectorizer():
+    """TF-IDF 벡터라이저 (싱글톤 패턴)"""
+    global _vectorizer
+    if _vectorizer is None:
+        _vectorizer = TfidfVectorizer(
+            analyzer='char_wb',
+            ngram_range=(2, 4),
+            max_features=10000
+        )
+    return _vectorizer
 
 
 def create_program_text(program):
@@ -99,7 +100,7 @@ def check_region_match(region_keyword, title, description, target):
 
 def filter_by_similarity(user_description, programs, top_n=30, min_score=0.2, match_all=False):
     """
-    임베딩 유사도 기반으로 지원사업 필터링
+    TF-IDF 유사도 기반으로 지원사업 필터링
     (키워드 정확 매칭 우선)
 
     Args:
@@ -117,20 +118,17 @@ def filter_by_similarity(user_description, programs, top_n=30, min_score=0.2, ma
             return programs[:top_n] if programs else []
         return programs if programs else []
 
-    model = get_model()
-
     # 사용자 입력에서 키워드 추출
     keywords = extract_keywords(user_description)
 
-    # 사용자 설명 임베딩
-    user_embedding = model.encode([user_description])
-
-    # 지원사업 텍스트 생성 및 임베딩
+    # 지원사업 텍스트 생성
     program_texts = [create_program_text(p) for p in programs]
-    program_embeddings = model.encode(program_texts)
 
-    # 코사인 유사도 계산
-    similarities = cosine_similarity(user_embedding, program_embeddings)[0]
+    # TF-IDF 유사도 계산
+    vectorizer = TfidfVectorizer(analyzer='char_wb', ngram_range=(2, 4), max_features=10000)
+    all_texts = [user_description] + program_texts
+    tfidf_matrix = vectorizer.fit_transform(all_texts)
+    similarities = cosine_similarity(tfidf_matrix[0:1], tfidf_matrix[1:])[0]
 
     # 유사도 점수와 키워드 매칭 정보 추가
     exact_match_programs = []  # 키워드가 정확히 포함된 결과
@@ -232,40 +230,3 @@ def get_relevance_explanation(user_description, program):
     if matched_keywords:
         return f"매칭: {', '.join(matched_keywords[:3])}"
     return ""
-
-
-# 테스트용
-if __name__ == "__main__":
-    # 테스트 데이터
-    test_programs = [
-        {
-            "title": "온라인 판로개척 지원사업",
-            "description": "소상공인 온라인 쇼핑몰 입점 및 상세페이지 제작 지원",
-            "target": "소상공인",
-            "category": "내수",
-            "agency": "소상공인시장진흥공단"
-        },
-        {
-            "title": "청년 창업 지원금",
-            "description": "청년 예비창업자 사업화 자금 지원",
-            "target": "만 39세 이하 청년",
-            "category": "창업",
-            "agency": "중소벤처기업부"
-        },
-        {
-            "title": "수출 물류 지원",
-            "description": "해외 수출 물류비 지원",
-            "target": "수출 기업",
-            "category": "수출",
-            "agency": "KOTRA"
-        }
-    ]
-
-    user_input = "군산에서 온라인쇼핑몰을 운영하는데 상세페이지 제작 지원받고 싶어요"
-
-    print("테스트 입력:", user_input)
-    print("-" * 50)
-
-    results = filter_by_similarity(user_input, test_programs, top_n=3)
-    for r in results:
-        print(f"[{r['similarity_score']:.2f}] {r['title']}")
