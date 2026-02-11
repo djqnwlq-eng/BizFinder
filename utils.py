@@ -171,9 +171,20 @@ def get_card_html(program, dday, status_badge, dday_text, dday_color):
         matched_keywords = program.get("matched_keywords", [])
 
         if is_exact_match and matched_keywords:
-            # 정확 매칭: 키워드 표시 (파란색)
+            # 전체 매칭: 키워드 표시 (파란색)
+            total_keywords = program.get("total_keywords", len(matched_keywords))
+            matched_count = len(matched_keywords)
             kw_text = ", ".join(matched_keywords[:3])
-            similarity_html = f'<span style="background: #1976d2; color: white; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 500;">✅ 키워드 매칭: {kw_text}</span>'
+            if total_keywords > 1:
+                similarity_html = f'<span style="background: #1976d2; color: white; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 500;">✅ {matched_count}/{total_keywords} 매칭: {kw_text}</span>'
+            else:
+                similarity_html = f'<span style="background: #1976d2; color: white; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 500;">✅ 키워드 매칭: {kw_text}</span>'
+        elif matched_keywords:
+            # 부분 매칭: 주황색
+            total_keywords = program.get("total_keywords", len(matched_keywords))
+            matched_count = len(matched_keywords)
+            kw_text = ", ".join(matched_keywords[:3])
+            similarity_html = f'<span style="background: #ff9800; color: white; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 500;">🔸 {matched_count}/{total_keywords} 매칭: {kw_text}</span>'
         else:
             # 유사 결과
             if score_pct >= 70:

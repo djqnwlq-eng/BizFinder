@@ -170,6 +170,49 @@ def fetch_all_programs(keywords_list, category=""):
     return all_programs
 
 
+def fetch_all_pages(keyword="소상공인", max_pages=10):
+    """
+    여러 페이지를 순회하여 전체 데이터를 가져오는 함수
+
+    Args:
+        keyword: 검색 키워드
+        max_pages: 최대 페이지 수 (안전장치)
+
+    Returns:
+        list: 전체 지원사업 리스트
+    """
+    all_programs = []
+    seen_titles = set()
+    page = 1
+    page_size = 100  # 한 페이지당 100건
+
+    while page <= max_pages:
+        programs = fetch_support_programs(
+            keyword=keyword,
+            page=page,
+            page_size=page_size
+        )
+
+        if not programs:
+            # 더 이상 데이터가 없으면 종료
+            break
+
+        for program in programs:
+            title = program.get("title", "")
+            if title and title not in seen_titles:
+                seen_titles.add(title)
+                all_programs.append(program)
+
+        # 가져온 데이터가 page_size보다 적으면 마지막 페이지
+        if len(programs) < page_size:
+            break
+
+        page += 1
+        time.sleep(0.3)  # API 서버 부담 방지
+
+    return all_programs
+
+
 def get_api_status():
     """
     API 연결 상태 확인용 함수

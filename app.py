@@ -4,8 +4,7 @@
 import streamlit as st
 
 from config import REGIONS, BUSINESS_TYPES, AGE_GROUPS, SUPPORT_CATEGORIES, BUSINESS_EXPERIENCE
-from api_client import fetch_all_programs, build_search_keywords, get_api_status, get_dummy_data, fetch_support_programs
-from filters import apply_all_filters
+from api_client import get_api_status, get_dummy_data, fetch_all_pages
 from utils import calculate_dday, get_status_badge, get_dday_text, get_card_html
 from semantic_filter import filter_by_similarity
 
@@ -40,6 +39,8 @@ if "search_results" not in st.session_state:
     st.session_state.search_results = None
 if "searched" not in st.session_state:
     st.session_state.searched = False
+if "is_checkbox_mode" not in st.session_state:
+    st.session_state.is_checkbox_mode = False
 
 # 헤더 영역
 st.title("🔍 BizFinder")
@@ -151,10 +152,10 @@ if search_clicked:
 
     if is_free_mode:
         # === 자유 설명 모드: 시맨틱 필터링 ===
-        with st.spinner("AI가 맞춤 지원사업을 분석하고 있습니다..."):
+        with st.spinner("AI가 전체 지원사업을 분석하고 있습니다... (최대 10페이지)"):
             if get_api_status():
-                # 넓은 범위로 데이터 가져오기 (100건)
-                programs = fetch_support_programs(keyword="소상공인", page_size=100)
+                # 전체 데이터 가져오기 (여러 페이지 순회)
+                programs = fetch_all_pages(keyword="소상공인", max_pages=10)
             else:
                 st.warning("API 연결이 불안정합니다. 테스트 데이터로 표시합니다.")
                 programs = get_dummy_data()
@@ -169,19 +170,68 @@ if search_clicked:
 
             # 유사도 점수 표시용 플래그
             st.session_state.show_similarity = True
+            st.session_state.is_checkbox_mode = False  # 자유 설명 모드
     else:
-        # === 일반 모드: 키워드 기반 ===
-        with st.spinner("지원사업을 검색하고 있습니다..."):
+        # === 일반 모드: 시맨틱 필터링 적용 ===
+        with st.spinner("AI가 전체 지원사업을 분석하고 있습니다... (최대 10페이지)"):
             if get_api_status():
-                keywords = build_search_keywords(filters_dict)
-                programs = fetch_all_programs(keywords)
+                # 전체 데이터 가져오기 (여러 페이지 순회)
+                programs = fetch_all_pages(keyword="소상공인", max_pages=10)
             else:
                 st.warning("API 연결이 불안정합니다. 테스트 데이터로 표시합니다.")
                 programs = get_dummy_data()
 
-            # 필터링 적용
-            filtered_programs = apply_all_filters(programs, filters_dict)
-            st.session_state.show_similarity = False
+            # 선택한 필터를 설명 텍스트로 변환
+            description_parts = []
+
+            # 자유 검색어
+            if filters_dict.get("free_keyword"):
+                description_parts.append(filters_dict["free_keyword"])
+
+            # 연령대
+            if filters_dict.get("age_group"):
+                description_parts.append(filters_dict["age_group"])
+
+            # 지역
+            if filters_dict.get("region_sido"):
+                region_text = filters_dict["region_sido"]
+                if filters_dict.get("region_sigungu"):
+                    region_text += " " + filters_dict["region_sigungu"]
+                description_parts.append(region_text)
+
+            # 업종
+            if filters_dict.get("business_type"):
+                description_parts.append(filters_dict["business_type"])
+
+            # 관심 분야
+            if filters_dict.get("categories"):
+                description_parts.extend(filters_dict["categories"])
+
+            # 설명 텍스트 생성
+            if description_parts:
+                search_description = " ".join(description_parts) + " 지원사업"
+            else:
+                search_description = "소상공인 지원사업"
+
+            # 시맨틱 유사도 필터링 (AND 로직: 모든 키워드 매칭 필요, 제한 없음)
+            filtered_programs = filter_by_similarity(
+                search_description,
+                programs,
+                top_n=None,  # 제한 없음
+                min_score=0.2,
+                match_all=True  # 모든 키워드가 매칭되어야 함
+            )
+
+            # 접수 상태 필터링 적용
+            if filters_dict.get("status") == "active":
+                filtered_programs = [p for p in filtered_programs
+                                     if not p.get("end_date") or
+                                     calculate_dday(p.get("end_date", "")) is None or
+                                     calculate_dday(p.get("end_date", "")) >= 0]
+
+            st.session_state.show_similarity = True
+            st.session_state.search_description = search_description
+            st.session_state.is_checkbox_mode = True  # 체크란 모드 표시
 
     # 결과 저장
     st.session_state.search_results = filtered_programs
@@ -200,16 +250,35 @@ if st.session_state.searched:
                 exact_count = sum(1 for r in results if r.get("is_exact_match"))
                 similar_count = len(results) - exact_count
 
-                if exact_count > 0:
-                    st.success(f"🎯 검색 결과: **{len(results)}건** (키워드 정확 매칭 **{exact_count}건**, 유사 결과 {similar_count}건)")
-                elif similar_count > 0:
-                    st.warning(f"📌 입력하신 키워드가 제목/내용에 정확히 포함된 결과가 없습니다. 의미상 유사한 **{similar_count}건**을 표시합니다.")
+                if st.session_state.get("is_checkbox_mode"):
+                    # 체크란 모드: 매칭 개수순 결과
+                    total_count = len(results)
+                    if total_count > 0:
+                        if exact_count > 0:
+                            st.success(f"🎯 검색 결과: **{total_count}건** (전체 매칭 **{exact_count}건**, 부분 매칭 {total_count - exact_count}건)")
+                        else:
+                            st.info(f"📌 검색 결과: **{total_count}건** (부분 매칭 - 키워드가 많이 일치하는 순으로 정렬)")
+                    else:
+                        st.warning("📌 매칭되는 결과가 없습니다. 조건을 줄여서 다시 검색해보세요.")
                 else:
-                    st.info("검색 결과가 없습니다.")
+                    # 자유 설명 모드: OR 매칭 결과
+                    if exact_count > 0:
+                        st.success(f"🎯 검색 결과: **{len(results)}건** (키워드 정확 매칭 **{exact_count}건**, 유사 결과 {similar_count}건)")
+                    elif similar_count > 0:
+                        st.warning(f"📌 입력하신 키워드가 제목/내용에 정확히 포함된 결과가 없습니다. 의미상 유사한 **{similar_count}건**을 표시합니다.")
+                    else:
+                        st.info("검색 결과가 없습니다.")
             else:
                 st.success(f"검색 결과: 총 **{len(results)}건**의 지원사업을 찾았습니다.")
         with col2:
-            if st.session_state.get("show_similarity"):
+            if st.session_state.get("is_checkbox_mode"):
+                # 체크란 모드: 매칭 결과순 우선
+                sort_option = st.selectbox(
+                    "정렬",
+                    ["매칭순", "마감 임박순", "가나다순"],
+                    label_visibility="collapsed"
+                )
+            elif st.session_state.get("show_similarity"):
                 sort_option = st.selectbox(
                     "정렬",
                     ["관련도순", "마감 임박순", "가나다순"],
@@ -236,7 +305,24 @@ if st.session_state.searched:
                     -x.get("similarity_score", 0)         # 유사도 높은 순
                 )
             )
-        # 마감 임박순은 기본값
+        elif sort_option == "매칭순":
+            # 매칭 개수 > 유사도 순
+            results = sorted(
+                results,
+                key=lambda x: (
+                    -x.get("matched_count", 0),           # 매칭 개수 많은 순
+                    -x.get("similarity_score", 0)         # 유사도 높은 순
+                )
+            )
+        elif sort_option == "마감 임박순":
+            # D-day 기준 정렬 (마감 임박한 것부터)
+            results = sorted(
+                results,
+                key=lambda x: (
+                    calculate_dday(x.get("end_date", "")) if calculate_dday(x.get("end_date", "")) is not None else 9999
+                )
+            )
+        # 기본값: 정렬 없이 현재 순서 유지
 
         st.divider()
 
