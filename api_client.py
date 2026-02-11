@@ -5,6 +5,7 @@ import os
 import time
 import requests
 import xml.etree.ElementTree as ET
+import streamlit as st
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -15,7 +16,16 @@ API_BASE_URL = "https://www.bizinfo.go.kr"
 
 
 def get_api_key():
-    """환경변수에서 API 키를 가져오는 함수"""
+    """환경변수 또는 Streamlit secrets에서 API 키를 가져오는 함수"""
+    # 1순위: Streamlit secrets (Cloud 배포용)
+    try:
+        api_key = st.secrets["BIZINFO_API_KEY"]
+        if api_key and api_key != "여기에키입력":
+            return api_key
+    except (KeyError, FileNotFoundError):
+        pass
+
+    # 2순위: 환경변수 (.env 로컬 개발용)
     api_key = os.getenv("BIZINFO_API_KEY")
     if not api_key or api_key == "여기에키입력":
         return None

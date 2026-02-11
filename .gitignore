@@ -5,3 +5,5 @@ favorites.json
 .DS_Store
 .streamlit/secrets.toml
 .claude/
+streamlit.log
+BizFinder/
