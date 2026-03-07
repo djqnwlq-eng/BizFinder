@@ -1,4 +1,4 @@
-# BizFinder - 소상공인 지원사업 매칭 프로그램
+# 지원사업 찾기 - 소상공인 지원사업 매칭 프로그램
 # 메인 Streamlit 앱
 
 import streamlit as st
@@ -11,7 +11,7 @@ from gemini_client import get_gemini_status, extract_keywords, recommend_program
 
 # 페이지 설정
 st.set_page_config(
-    page_title="BizFinder - 소상공인 지원사업 찾기",
+    page_title="지원사업 찾기",
     page_icon="🔍",
     layout="wide"
 )
@@ -46,7 +46,12 @@ if "is_gemini_mode" not in st.session_state:
     st.session_state.is_gemini_mode = False
 
 # 헤더 영역
-st.title("🔍 BizFinder")
+st.markdown("""
+<div style="display: flex; align-items: baseline; gap: 12px;">
+    <h1 style="margin: 0;">🔍 지원사업 찾기</h1>
+    <span style="color: #888; font-size: 14px;">Developed by 동행 세무회계사무소</span>
+</div>
+""", unsafe_allow_html=True)
 st.subheader("나에게 딱 맞는 소상공인 지원사업을 찾아보세요")
 st.divider()
 
@@ -86,7 +91,7 @@ with st.sidebar:
 
     # 자유 설명 (항상 표시)
     free_description = st.text_area(
-        "💬 내 상황 설명 (선택)",
+        "💬 내 상황 설명 (필수)",
         placeholder="예: 서울에서 카페를 운영하는 30대입니다. 매출이 줄어서 운영자금이 필요하고, 온라인 마케팅도 배우고 싶어요.",
         height=150,
         help="자유롭게 상황을 설명하면 AI가 맞춤 지원사업을 찾아드립니다. 상세 조건과 함께 입력하면 더 정확한 결과를 얻을 수 있습니다."
@@ -95,7 +100,7 @@ with st.sidebar:
     st.divider()
 
     # 상세 조건 (항상 표시)
-    st.subheader("📌 상세 조건 (선택)")
+    st.subheader("📌 상세 조건 (필수)")
 
     # 1) 연령대
     age_options = ["선택 안함"] + list(AGE_GROUPS.keys())
@@ -125,7 +130,7 @@ with st.sidebar:
         "접수 예정 포함": "upcoming",
         "전체": "all"
     }
-    status_label = st.radio("접수 상태", list(status_options.keys()), index=0)
+    status_label = st.radio("접수 상태", list(status_options.keys()), index=2)
     status = status_options[status_label]
 
     # 제거된 항목의 기본값
@@ -135,8 +140,16 @@ with st.sidebar:
 
     st.divider()
 
-    # 검색 버튼
-    search_clicked = st.button("🔍 검색하기", type="primary", use_container_width=True)
+    # 검색 버튼 - 상황 설명 + 상세 조건 전부 입력해야 활성화
+    has_description_input = bool(free_description and free_description.strip())
+    has_all_conditions = (
+        age_group != "선택 안함" and
+        business_type != "선택 안함" and
+        business_experience != "선택 안함"
+    )
+    can_search = has_description_input and has_all_conditions
+
+    search_clicked = st.button("🔍 검색하기", type="primary", use_container_width=True, disabled=not can_search)
 
 # 메인 영역 - 결과 표시
 if search_clicked:
@@ -165,6 +178,9 @@ if search_clicked:
     # Gemini 사용 가능 여부
     has_gemini = get_gemini_status() and get_api_status()
     has_description = bool(combined_description.strip())
+
+    # 상단 문구
+    st.caption("💬 지원사업은 활용하되, 의존하지 마세요.")
 
     if has_gemini and has_description:
         # === Gemini + 기업마당 API 연동 모드 ===
@@ -403,7 +419,7 @@ else:
     # 사용 안내
     with st.expander("💡 사용 방법"):
         st.markdown("""
-        **BizFinder**는 소상공인을 위한 맞춤형 지원사업 검색 서비스입니다.
+        **지원사업 찾기**는 소상공인을 위한 맞춤형 지원사업 검색 서비스입니다.
 
         **검색 방법:**
         1. 좌측 사이드바에서 **연령대, 지역, 업종** 등 조건을 선택하세요
