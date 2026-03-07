@@ -84,82 +84,54 @@ with st.sidebar:
 
     st.header("📋 내 정보 입력")
 
-    # 자유 설명 모드 토글
-    free_mode = st.toggle("✍️ 자유롭게 설명하기", value=False)
+    # 자유 설명 (항상 표시)
+    free_description = st.text_area(
+        "💬 내 상황 설명 (선택)",
+        placeholder="예: 서울에서 카페를 운영하는 30대입니다. 매출이 줄어서 운영자금이 필요하고, 온라인 마케팅도 배우고 싶어요.",
+        height=150,
+        help="자유롭게 상황을 설명하면 AI가 맞춤 지원사업을 찾아드립니다. 상세 조건과 함께 입력하면 더 정확한 결과를 얻을 수 있습니다."
+    )
 
     st.divider()
 
-    # 자유 설명 모드 ON
-    if free_mode:
-        free_description = st.text_area(
-            "내 상황을 자유롭게 설명해주세요",
-            placeholder="예: 저는 서울에서 카페를 운영하는 30대 청년 사장입니다. 매출이 줄어서 운영자금이 필요하고, 온라인 마케팅도 배우고 싶어요.",
-            height=200,
-            help="자연어로 본인의 상황을 설명하면 맞춤 지원사업을 찾아드립니다"
-        )
-        # 기본값 설정
-        free_keyword = None
-        age_group = "선택 안함"
-        region_sido = "전국"
-        region_sigungu = None
-        business_type = "선택 안함"
-        business_experience = "선택 안함"
-        categories = []
-        status = "active"
+    # 상세 조건 (항상 표시)
+    st.subheader("📌 상세 조건 (선택)")
 
-    # 일반 모드 (체크박스/드롭다운)
-    else:
-        free_description = None
+    # 1) 연령대
+    age_options = ["선택 안함"] + list(AGE_GROUPS.keys())
+    age_group = st.radio("연령대", age_options, index=0)
 
-        # 0) 자유 검색어 입력
-        free_keyword = st.text_input(
-            "🔍 검색어 입력",
-            placeholder="예: 카페, 온라인 마케팅, R&D 등",
-            help="원하는 키워드를 직접 입력하세요"
-        )
+    st.divider()
 
-        st.divider()
+    # 2) 지역 - 시/도만
+    sido_options = ["전국"] + list(REGIONS.keys())
+    region_sido = st.selectbox("지역 (시/도)", sido_options, index=0)
 
-        # 1) 연령대
-        age_options = ["선택 안함"] + list(AGE_GROUPS.keys())
-        age_group = st.radio("연령대", age_options, index=0)
+    st.divider()
 
-        st.divider()
+    # 3) 업종
+    business_options = ["선택 안함"] + BUSINESS_TYPES
+    business_type = st.selectbox("업종", business_options, index=0)
 
-        # 2) 지역 - 시/도
-        sido_options = ["전국"] + list(REGIONS.keys())
-        region_sido = st.selectbox("지역 (시/도)", sido_options, index=0)
+    # 4) 사업 경력
+    experience_options = ["선택 안함"] + BUSINESS_EXPERIENCE
+    business_experience = st.selectbox("사업 경력", experience_options, index=0)
 
-        # 3) 지역 - 시/군/구 (동적 변경)
-        if region_sido != "전국":
-            sigungu_options = ["전체"] + REGIONS.get(region_sido, [])
-            region_sigungu = st.selectbox("지역 (시/군/구)", sigungu_options, index=0)
-        else:
-            region_sigungu = None
+    st.divider()
 
-        st.divider()
+    # 5) 접수 상태
+    status_options = {
+        "접수 중만 보기": "active",
+        "접수 예정 포함": "upcoming",
+        "전체": "all"
+    }
+    status_label = st.radio("접수 상태", list(status_options.keys()), index=0)
+    status = status_options[status_label]
 
-        # 4) 업종
-        business_options = ["선택 안함"] + BUSINESS_TYPES
-        business_type = st.selectbox("업종", business_options, index=0)
-
-        # 5) 사업 경력
-        experience_options = ["선택 안함"] + BUSINESS_EXPERIENCE
-        business_experience = st.selectbox("사업 경력", experience_options, index=0)
-
-        st.divider()
-
-        # 6) 관심 분야 (복수 선택)
-        categories = st.multiselect("관심 분야 (복수 선택 가능)", SUPPORT_CATEGORIES)
-
-        # 7) 접수 상태
-        status_options = {
-            "접수 중만 보기": "active",
-            "접수 예정 포함": "upcoming",
-            "전체": "all"
-        }
-        status_label = st.radio("접수 상태", list(status_options.keys()), index=0)
-        status = status_options[status_label]
+    # 제거된 항목의 기본값
+    free_keyword = None
+    region_sigungu = None
+    categories = []
 
     st.divider()
 
@@ -171,165 +143,122 @@ if search_clicked:
     # 필터 조건 구성
     filters_dict = {
         "free_description": free_description.strip() if free_description else None,
-        "free_keyword": free_keyword.strip() if free_keyword else None,
         "age_group": age_group if age_group != "선택 안함" else None,
         "region_sido": region_sido if region_sido != "전국" else None,
-        "region_sigungu": region_sigungu if region_sigungu and region_sigungu != "전체" else None,
         "business_type": business_type if business_type != "선택 안함" else None,
-        "categories": categories if categories else None,
         "status": status
     }
 
-    # 자유 설명 모드 여부
-    is_free_mode = filters_dict.get("free_description") is not None
+    # 자유 설명 + 상세 조건을 합쳐서 검색 텍스트 생성
+    description_parts = []
+    if filters_dict.get("free_description"):
+        description_parts.append(filters_dict["free_description"])
+    if filters_dict.get("age_group"):
+        description_parts.append(filters_dict["age_group"])
+    if filters_dict.get("region_sido"):
+        description_parts.append(filters_dict["region_sido"])
+    if filters_dict.get("business_type"):
+        description_parts.append(filters_dict["business_type"])
 
-    if is_free_mode:
-        # === 자유 설명 모드 ===
-        use_gemini = get_gemini_status() and get_api_status()
+    combined_description = " ".join(description_parts) if description_parts else ""
 
-        if use_gemini:
-            # --- Gemini + 기업마당 API 연동 모드 ---
-            filtered_programs = []
+    # Gemini 사용 가능 여부
+    has_gemini = get_gemini_status() and get_api_status()
+    has_description = bool(combined_description.strip())
 
-            # 1단계: Gemini가 키워드 확장
-            with st.spinner("AI가 검색 키워드를 분석하고 있습니다..."):
-                keywords = extract_keywords(filters_dict["free_description"])
+    if has_gemini and has_description:
+        # === Gemini + 기업마당 API 연동 모드 ===
+        filtered_programs = []
 
-            if keywords:
-                st.info(f"AI 추출 키워드: {', '.join(keywords)}")
+        # 1단계: Gemini가 키워드 확장
+        with st.spinner("AI가 검색 키워드를 분석하고 있습니다..."):
+            keywords = extract_keywords(combined_description)
 
-                # 2단계: 키워드별로 기업마당 API 검색
-                with st.spinner(f"기업마당에서 {len(keywords)}개 키워드로 검색 중..."):
-                    programs = fetch_all_programs(keywords)
+        if keywords:
+            st.info(f"AI 추출 키워드: {', '.join(keywords)}")
 
-                if programs:
-                    # 3단계: Gemini가 최종 추천
-                    with st.spinner(f"AI가 {len(programs)}건의 지원사업을 분석하고 있습니다..."):
-                        # 너무 많으면 TF-IDF로 사전 필터링 (100건 이내로)
-                        if len(programs) > 100:
-                            programs = filter_by_similarity(
-                                filters_dict["free_description"],
-                                programs,
-                                top_n=100,
-                                min_score=0.1
-                            )
+            # 2단계: 키워드별로 기업마당 API 검색
+            with st.spinner(f"기업마당에서 {len(keywords)}개 키워드로 검색 중..."):
+                programs = fetch_all_programs(keywords)
 
-                        recommended = recommend_programs(
-                            filters_dict["free_description"],
-                            programs
-                        )
-
-                    if recommended:
-                        filtered_programs = recommended
-                    else:
-                        # Gemini 추천 실패 시 TF-IDF 폴백
-                        st.warning("AI 추천 분석에 실패하여 키워드 매칭 결과를 표시합니다.")
-                        filtered_programs = filter_by_similarity(
-                            filters_dict["free_description"],
+            if programs:
+                # 3단계: Gemini가 최종 추천
+                with st.spinner(f"AI가 {len(programs)}건의 지원사업을 분석하고 있습니다..."):
+                    if len(programs) > 100:
+                        programs = filter_by_similarity(
+                            combined_description,
                             programs,
-                            top_n=30,
-                            min_score=0.2
+                            top_n=100,
+                            min_score=0.1
                         )
+
+                    recommended = recommend_programs(
+                        combined_description,
+                        programs
+                    )
+
+                if recommended:
+                    filtered_programs = recommended
                 else:
-                    st.warning("검색 결과가 없습니다. 다른 표현으로 시도해보세요.")
+                    st.warning("AI 추천 분석에 실패하여 키워드 매칭 결과를 표시합니다.")
+                    filtered_programs = filter_by_similarity(
+                        combined_description, programs, top_n=30, min_score=0.2
+                    )
             else:
-                # 키워드 추출 실패 시 기존 방식 폴백
-                st.warning("AI 키워드 분석에 실패하여 기본 검색을 실행합니다.")
-                programs = fetch_all_pages(keyword="소상공인", max_pages=10)
-                filtered_programs = filter_by_similarity(
-                    filters_dict["free_description"],
-                    programs,
-                    top_n=30,
-                    min_score=0.2
-                )
-
-            st.session_state.show_similarity = True
-            st.session_state.is_gemini_mode = True
-            st.session_state.is_checkbox_mode = False
-
+                st.warning("검색 결과가 없습니다. 다른 표현으로 시도해보세요.")
         else:
-            # --- 기존 TF-IDF 모드 (Gemini 키 없을 때) ---
-            if not get_gemini_status():
-                st.warning("Gemini API 키가 입력되지 않아 기본 검색으로 실행합니다. 좌측 상단 'AI 기능 설정'에서 키를 입력하면 AI 맞춤 추천이 가능합니다.")
-
-            with st.spinner("지원사업을 검색하고 있습니다..."):
-                if get_api_status():
-                    programs = fetch_all_pages(keyword="소상공인", max_pages=10)
-                else:
-                    st.warning("기업마당 API 연결이 불안정합니다. 테스트 데이터로 표시합니다.")
-                    programs = get_dummy_data()
-
-                filtered_programs = filter_by_similarity(
-                    filters_dict["free_description"],
-                    programs,
-                    top_n=30,
-                    min_score=0.2
-                )
-
-            st.session_state.show_similarity = True
-            st.session_state.is_gemini_mode = False
-            st.session_state.is_checkbox_mode = False
-    else:
-        # === 일반 모드: 시맨틱 필터링 적용 ===
-        with st.spinner("AI가 전체 지원사업을 분석하고 있습니다... (최대 10페이지)"):
-            if get_api_status():
-                # 전체 데이터 가져오기 (여러 페이지 순회)
-                programs = fetch_all_pages(keyword="소상공인", max_pages=10)
-            else:
-                st.warning("API 연결이 불안정합니다. 테스트 데이터로 표시합니다.")
-                programs = get_dummy_data()
-
-            # 선택한 필터를 설명 텍스트로 변환
-            description_parts = []
-
-            # 자유 검색어
-            if filters_dict.get("free_keyword"):
-                description_parts.append(filters_dict["free_keyword"])
-
-            # 연령대
-            if filters_dict.get("age_group"):
-                description_parts.append(filters_dict["age_group"])
-
-            # 지역
-            if filters_dict.get("region_sido"):
-                region_text = filters_dict["region_sido"]
-                if filters_dict.get("region_sigungu"):
-                    region_text += " " + filters_dict["region_sigungu"]
-                description_parts.append(region_text)
-
-            # 업종
-            if filters_dict.get("business_type"):
-                description_parts.append(filters_dict["business_type"])
-
-            # 관심 분야
-            if filters_dict.get("categories"):
-                description_parts.extend(filters_dict["categories"])
-
-            # 설명 텍스트 생성
-            if description_parts:
-                search_description = " ".join(description_parts) + " 지원사업"
-            else:
-                search_description = "소상공인 지원사업"
-
-            # 시맨틱 유사도 필터링 (AND 로직: 모든 키워드 매칭 필요, 제한 없음)
+            st.warning("AI 키워드 분석에 실패하여 기본 검색을 실행합니다.")
+            programs = fetch_all_pages(keyword="소상공인", max_pages=10)
             filtered_programs = filter_by_similarity(
-                search_description,
-                programs,
-                top_n=None,  # 제한 없음
-                min_score=0.2,
-                match_all=True  # 모든 키워드가 매칭되어야 함
+                combined_description, programs, top_n=30, min_score=0.2
             )
 
-            # 접수 상태 필터링 적용
+        # 접수 상태 필터링
+        if filters_dict.get("status") == "active":
+            filtered_programs = [p for p in filtered_programs
+                                 if not p.get("end_date") or
+                                 calculate_dday(p.get("end_date", "")) is None or
+                                 calculate_dday(p.get("end_date", "")) >= 0]
+
+        st.session_state.show_similarity = True
+        st.session_state.is_gemini_mode = True
+        st.session_state.is_checkbox_mode = False
+
+    elif has_description:
+        # === TF-IDF 폴백 모드 (Gemini 키 없을 때) ===
+        if not get_gemini_status():
+            st.warning("Gemini API 키가 입력되지 않아 기본 검색으로 실행합니다. 좌측 상단 'AI 기능 설정'에서 키를 입력하면 AI 맞춤 추천이 가능합니다.")
+
+        with st.spinner("지원사업을 검색하고 있습니다..."):
+            if get_api_status():
+                programs = fetch_all_pages(keyword="소상공인", max_pages=10)
+            else:
+                st.warning("기업마당 API 연결이 불안정합니다. 테스트 데이터로 표시합니다.")
+                programs = get_dummy_data()
+
+            search_description = combined_description + " 지원사업"
+            filtered_programs = filter_by_similarity(
+                search_description, programs,
+                top_n=None, min_score=0.2, match_all=True
+            )
+
             if filters_dict.get("status") == "active":
                 filtered_programs = [p for p in filtered_programs
                                      if not p.get("end_date") or
                                      calculate_dday(p.get("end_date", "")) is None or
                                      calculate_dday(p.get("end_date", "")) >= 0]
 
-            st.session_state.show_similarity = True
-            st.session_state.search_description = search_description
-            st.session_state.is_checkbox_mode = True  # 체크란 모드 표시
+        st.session_state.show_similarity = True
+        st.session_state.is_gemini_mode = False
+        st.session_state.is_checkbox_mode = True
+
+    else:
+        # === 아무 조건도 입력하지 않은 경우 ===
+        st.warning("상황 설명 또는 상세 조건을 하나 이상 입력해주세요.")
+        filtered_programs = []
+        st.session_state.show_similarity = False
+        st.session_state.is_gemini_mode = False
+        st.session_state.is_checkbox_mode = False
 
     # 결과 저장
     st.session_state.search_results = filtered_programs
