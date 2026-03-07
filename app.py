@@ -4,9 +4,10 @@
 import streamlit as st
 
 from config import REGIONS, BUSINESS_TYPES, AGE_GROUPS, SUPPORT_CATEGORIES, BUSINESS_EXPERIENCE
-from api_client import get_api_status, get_dummy_data, fetch_all_pages
+from api_client import get_api_status, get_dummy_data, fetch_all_pages, fetch_all_programs
 from utils import calculate_dday, get_status_badge, get_dday_text, get_card_html
 from semantic_filter import filter_by_similarity
+from gemini_client import get_gemini_status, extract_keywords, recommend_programs
 
 # 페이지 설정
 st.set_page_config(
@@ -41,6 +42,8 @@ if "searched" not in st.session_state:
     st.session_state.searched = False
 if "is_checkbox_mode" not in st.session_state:
     st.session_state.is_checkbox_mode = False
+if "is_gemini_mode" not in st.session_state:
+    st.session_state.is_gemini_mode = False
 
 # 헤더 영역
 st.title("🔍 BizFinder")
@@ -49,6 +52,36 @@ st.divider()
 
 # 사이드바 - 검색 조건
 with st.sidebar:
+    # Gemini API 키 입력
+    with st.expander("🔑 AI 기능 설정", expanded=not get_gemini_status()):
+        gemini_key_input = st.text_input(
+            "Gemini API 키",
+            type="password",
+            value=st.session_state.get("gemini_api_key", ""),
+            placeholder="API 키를 입력하세요",
+            help="AI 추천 기능을 사용하려면 Google Gemini API 키가 필요합니다.\n\n"
+                 "**발급 방법 (30초면 완료!):**\n"
+                 "1. 아래 링크를 클릭하여 Google AI Studio에 접속\n"
+                 "2. Google 계정으로 로그인\n"
+                 "3. 'API 키 만들기' 버튼 클릭\n"
+                 "4. 생성된 키를 복사하여 여기에 붙여넣기\n\n"
+                 "**무료**로 사용 가능합니다."
+        )
+        st.session_state.gemini_api_key = gemini_key_input
+
+        st.markdown(
+            '<a href="https://aistudio.google.com/apikey" target="_blank">'
+            '👉 API 키 발급 페이지로 이동</a>',
+            unsafe_allow_html=True
+        )
+
+        if get_gemini_status():
+            st.success("AI 연결 완료", icon="✅")
+        else:
+            st.caption("키를 입력하면 AI 맞춤 추천 기능이 활성화됩니다.")
+
+    st.divider()
+
     st.header("📋 내 정보 입력")
 
     # 자유 설명 모드 토글
@@ -151,26 +184,91 @@ if search_clicked:
     is_free_mode = filters_dict.get("free_description") is not None
 
     if is_free_mode:
-        # === 자유 설명 모드: 시맨틱 필터링 ===
-        with st.spinner("AI가 전체 지원사업을 분석하고 있습니다... (최대 10페이지)"):
-            if get_api_status():
-                # 전체 데이터 가져오기 (여러 페이지 순회)
-                programs = fetch_all_pages(keyword="소상공인", max_pages=10)
+        # === 자유 설명 모드 ===
+        use_gemini = get_gemini_status() and get_api_status()
+
+        if use_gemini:
+            # --- Gemini + 기업마당 API 연동 모드 ---
+            filtered_programs = []
+
+            # 1단계: Gemini가 키워드 확장
+            with st.spinner("AI가 검색 키워드를 분석하고 있습니다..."):
+                keywords = extract_keywords(filters_dict["free_description"])
+
+            if keywords:
+                st.info(f"AI 추출 키워드: {', '.join(keywords)}")
+
+                # 2단계: 키워드별로 기업마당 API 검색
+                with st.spinner(f"기업마당에서 {len(keywords)}개 키워드로 검색 중..."):
+                    programs = fetch_all_programs(keywords)
+
+                if programs:
+                    # 3단계: Gemini가 최종 추천
+                    with st.spinner(f"AI가 {len(programs)}건의 지원사업을 분석하고 있습니다..."):
+                        # 너무 많으면 TF-IDF로 사전 필터링 (100건 이내로)
+                        if len(programs) > 100:
+                            programs = filter_by_similarity(
+                                filters_dict["free_description"],
+                                programs,
+                                top_n=100,
+                                min_score=0.1
+                            )
+
+                        recommended = recommend_programs(
+                            filters_dict["free_description"],
+                            programs
+                        )
+
+                    if recommended:
+                        filtered_programs = recommended
+                    else:
+                        # Gemini 추천 실패 시 TF-IDF 폴백
+                        st.warning("AI 추천 분석에 실패하여 키워드 매칭 결과를 표시합니다.")
+                        filtered_programs = filter_by_similarity(
+                            filters_dict["free_description"],
+                            programs,
+                            top_n=30,
+                            min_score=0.2
+                        )
+                else:
+                    st.warning("검색 결과가 없습니다. 다른 표현으로 시도해보세요.")
             else:
-                st.warning("API 연결이 불안정합니다. 테스트 데이터로 표시합니다.")
-                programs = get_dummy_data()
+                # 키워드 추출 실패 시 기존 방식 폴백
+                st.warning("AI 키워드 분석에 실패하여 기본 검색을 실행합니다.")
+                programs = fetch_all_pages(keyword="소상공인", max_pages=10)
+                filtered_programs = filter_by_similarity(
+                    filters_dict["free_description"],
+                    programs,
+                    top_n=30,
+                    min_score=0.2
+                )
 
-            # 시맨틱 유사도 필터링 (상위 30건, 키워드 정확 매칭 우선)
-            filtered_programs = filter_by_similarity(
-                filters_dict["free_description"],
-                programs,
-                top_n=30,
-                min_score=0.2
-            )
-
-            # 유사도 점수 표시용 플래그
             st.session_state.show_similarity = True
-            st.session_state.is_checkbox_mode = False  # 자유 설명 모드
+            st.session_state.is_gemini_mode = True
+            st.session_state.is_checkbox_mode = False
+
+        else:
+            # --- 기존 TF-IDF 모드 (Gemini 키 없을 때) ---
+            if not get_gemini_status():
+                st.warning("Gemini API 키가 입력되지 않아 기본 검색으로 실행합니다. 좌측 상단 'AI 기능 설정'에서 키를 입력하면 AI 맞춤 추천이 가능합니다.")
+
+            with st.spinner("지원사업을 검색하고 있습니다..."):
+                if get_api_status():
+                    programs = fetch_all_pages(keyword="소상공인", max_pages=10)
+                else:
+                    st.warning("기업마당 API 연결이 불안정합니다. 테스트 데이터로 표시합니다.")
+                    programs = get_dummy_data()
+
+                filtered_programs = filter_by_similarity(
+                    filters_dict["free_description"],
+                    programs,
+                    top_n=30,
+                    min_score=0.2
+                )
+
+            st.session_state.show_similarity = True
+            st.session_state.is_gemini_mode = False
+            st.session_state.is_checkbox_mode = False
     else:
         # === 일반 모드: 시맨틱 필터링 적용 ===
         with st.spinner("AI가 전체 지원사업을 분석하고 있습니다... (최대 10페이지)"):
@@ -245,7 +343,11 @@ if st.session_state.searched:
         # 결과 건수 및 정렬 옵션
         col1, col2 = st.columns([3, 1])
         with col1:
-            if st.session_state.get("show_similarity"):
+            if st.session_state.get("is_gemini_mode"):
+                # Gemini AI 추천 모드
+                high_count = sum(1 for r in results if r.get("gemini_relevance") == "high")
+                st.success(f"AI 추천 결과: **{len(results)}건** (강력 추천 **{high_count}건**)")
+            elif st.session_state.get("show_similarity"):
                 # 정확 매칭과 유사 결과 구분
                 exact_count = sum(1 for r in results if r.get("is_exact_match"))
                 similar_count = len(results) - exact_count
@@ -255,23 +357,30 @@ if st.session_state.searched:
                     total_count = len(results)
                     if total_count > 0:
                         if exact_count > 0:
-                            st.success(f"🎯 검색 결과: **{total_count}건** (전체 매칭 **{exact_count}건**, 부분 매칭 {total_count - exact_count}건)")
+                            st.success(f"검색 결과: **{total_count}건** (전체 매칭 **{exact_count}건**, 부분 매칭 {total_count - exact_count}건)")
                         else:
-                            st.info(f"📌 검색 결과: **{total_count}건** (부분 매칭 - 키워드가 많이 일치하는 순으로 정렬)")
+                            st.info(f"검색 결과: **{total_count}건** (부분 매칭 - 키워드가 많이 일치하는 순으로 정렬)")
                     else:
-                        st.warning("📌 매칭되는 결과가 없습니다. 조건을 줄여서 다시 검색해보세요.")
+                        st.warning("매칭되는 결과가 없습니다. 조건을 줄여서 다시 검색해보세요.")
                 else:
-                    # 자유 설명 모드: OR 매칭 결과
+                    # 자유 설명 모드 (TF-IDF 폴백): OR 매칭 결과
                     if exact_count > 0:
-                        st.success(f"🎯 검색 결과: **{len(results)}건** (키워드 정확 매칭 **{exact_count}건**, 유사 결과 {similar_count}건)")
+                        st.success(f"검색 결과: **{len(results)}건** (키워드 정확 매칭 **{exact_count}건**, 유사 결과 {similar_count}건)")
                     elif similar_count > 0:
-                        st.warning(f"📌 입력하신 키워드가 제목/내용에 정확히 포함된 결과가 없습니다. 의미상 유사한 **{similar_count}건**을 표시합니다.")
+                        st.warning(f"입력하신 키워드가 제목/내용에 정확히 포함된 결과가 없습니다. 의미상 유사한 **{similar_count}건**을 표시합니다.")
                     else:
                         st.info("검색 결과가 없습니다.")
             else:
                 st.success(f"검색 결과: 총 **{len(results)}건**의 지원사업을 찾았습니다.")
         with col2:
-            if st.session_state.get("is_checkbox_mode"):
+            if st.session_state.get("is_gemini_mode"):
+                # Gemini 모드: AI 추천순 우선
+                sort_option = st.selectbox(
+                    "정렬",
+                    ["AI 추천순", "마감 임박순", "가나다순"],
+                    label_visibility="collapsed"
+                )
+            elif st.session_state.get("is_checkbox_mode"):
                 # 체크란 모드: 매칭 결과순 우선
                 sort_option = st.selectbox(
                     "정렬",
@@ -292,7 +401,14 @@ if st.session_state.searched:
                 )
 
         # 정렬 적용
-        if sort_option == "가나다순":
+        if sort_option == "AI 추천순":
+            # Gemini가 보내준 순서 유지 (이미 적합도순)
+            relevance_order = {"high": 0, "medium": 1, "low": 2}
+            results = sorted(
+                results,
+                key=lambda x: relevance_order.get(x.get("gemini_relevance", "low"), 2)
+            )
+        elif sort_option == "가나다순":
             results = sorted(results, key=lambda x: x.get("title", ""))
         elif sort_option == "최신 등록순":
             results = sorted(results, key=lambda x: x.get("start_date", ""), reverse=True)
@@ -373,12 +489,17 @@ else:
     # API 상태 표시
     with st.expander("ℹ️ 시스템 정보"):
         if get_api_status():
-            st.success("✅ 기업마당 API 연결 정상")
+            st.success("기업마당 API 연결 정상")
         else:
-            st.warning("⚠️ API 키가 설정되지 않았거나 연결에 문제가 있습니다.")
+            st.warning("기업마당 API 키가 설정되지 않았거나 연결에 문제가 있습니다.")
             st.write("`.env` 파일에 API 키를 입력해주세요:")
             st.code("BIZINFO_API_KEY=발급받은키", language="bash")
             st.write("API 키 발급: https://www.bizinfo.go.kr → API 목록 → 사용신청")
+
+        if get_gemini_status():
+            st.success("Gemini AI 연결 정상 (자유 설명 모드에서 AI 추천 사용 가능)")
+        else:
+            st.warning("Gemini API 키가 설정되지 않았습니다. 좌측 사이드바에서 API 키를 입력해주세요.")
 
 # 푸터
 st.divider()

@@ -155,6 +155,8 @@ def get_card_html(program, dday, status_badge, dday_text, dday_color):
     description = strip_html_tags(program.get("description", "-"))
     link = program.get("link", "")
     similarity_score = program.get("similarity_score")
+    gemini_reason = program.get("gemini_reason")
+    gemini_relevance = program.get("gemini_relevance")
 
     if len(description) > 150:
         description = description[:150] + "..."
@@ -162,6 +164,17 @@ def get_card_html(program, dday, status_badge, dday_text, dday_color):
     link_html = ""
     if link:
         link_html = f'<div style="margin-top: 16px; text-align: center;"><a href="{link}" target="_blank" style="display: inline-block; padding: 10px 24px; background: #FF6B35; color: white; text-decoration: none; border-radius: 8px; font-weight: 500;">📄 상세보기</a></div>'
+
+    # Gemini 추천 이유 (있을 경우만)
+    gemini_html = ""
+    if gemini_reason:
+        relevance_styles = {
+            "high": ("background: #1976d2", "AI 강력 추천"),
+            "medium": ("background: #ff9800", "AI 추천"),
+            "low": ("background: #666", "AI 참고"),
+        }
+        style, label = relevance_styles.get(gemini_relevance, ("background: #666", "AI 추천"))
+        gemini_html = f'<div style="margin-top: 12px; padding: 12px; background: #e3f2fd; border-radius: 8px; border-left: 4px solid #1976d2; color: #333; font-size: 13px; line-height: 1.6;"><span style="{style}; color: white; padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; margin-right: 8px;">{label}</span>{gemini_reason}</div>'
 
     # 유사도 점수 뱃지 (있을 경우만)
     similarity_html = ""
@@ -210,7 +223,8 @@ def get_card_html(program, dday, status_badge, dday_text, dday_color):
 <div>📅 <strong>신청기간:</strong> {start_date} ~ {end_date}</div>
 <div>👥 <strong>지원대상:</strong> {target}</div>
 </div>
-<div style="margin-top: 12px; padding: 12px; background: #f8f9fa; border-radius: 8px; color: #555; font-size: 13px; line-height: 1.6;">📝 {description}</div>
+<div style="margin-top: 12px; padding: 12px; background: #f8f9fa; border-radius: 8px; color: #555; font-size: 13px; line-height: 1.6;">{description}</div>
+{gemini_html}
 {link_html}
 </div>'''
 
