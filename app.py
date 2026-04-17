@@ -58,32 +58,43 @@ st.divider()
 # 사이드바 - 검색 조건
 with st.sidebar:
     # Gemini API 키 입력
-    with st.expander("🔑 AI 기능 설정", expanded=not get_gemini_status()):
+    with st.expander("🔑 AI 기능 설정 (Gemini API 키 필요)", expanded=not get_gemini_status()):
         gemini_key_input = st.text_input(
             "Gemini API 키",
             type="password",
             value=st.session_state.get("gemini_api_key", ""),
-            placeholder="API 키를 입력하세요",
-            help="AI 추천 기능을 사용하려면 Google Gemini API 키가 필요합니다.\n\n"
-                 "**발급 방법 (30초면 완료!):**\n"
-                 "1. 아래 링크를 클릭하여 Google AI Studio에 접속\n"
-                 "2. Google 계정으로 로그인\n"
-                 "3. 'API 키 만들기' 버튼 클릭\n"
-                 "4. 생성된 키를 복사하여 여기에 붙여넣기\n\n"
-                 "**무료**로 사용 가능합니다."
+            placeholder="여기에 발급받은 키를 붙여넣으세요"
         )
         st.session_state.gemini_api_key = gemini_key_input
-
-        st.markdown(
-            '<a href="https://aistudio.google.com/apikey" target="_blank">'
-            '👉 API 키 발급 페이지로 이동</a>',
-            unsafe_allow_html=True
-        )
 
         if get_gemini_status():
             st.success("AI 연결 완료", icon="✅")
         else:
-            st.caption("키를 입력하면 AI 맞춤 추천 기능이 활성화됩니다.")
+            st.caption("⚠️ AI 맞춤 추천을 사용하려면 키가 필요합니다.")
+
+        st.markdown("---")
+        st.markdown("##### 📖 Gemini API 키 발급 방법 (30초 소요, 무료)")
+        st.markdown(
+            """
+            **1단계.** 아래 버튼을 눌러 Google AI Studio로 이동합니다.
+
+            **2단계.** Google 계정으로 로그인합니다. (구글 ID가 없으면 회원가입)
+
+            **3단계.** 화면의 **`+ Create API key`** 또는 **`API 키 만들기`** 버튼을 클릭합니다.
+
+            **4단계.** 생성된 긴 문자열(예: `AIzaSy...`)을 복사합니다.
+
+            **5단계.** 위 입력창에 붙여넣기(`Ctrl+V` 또는 `Cmd+V`)합니다.
+            """
+        )
+        st.markdown(
+            '<a href="https://aistudio.google.com/apikey" target="_blank" '
+            'style="display:inline-block; padding:8px 16px; background-color:#4285F4; '
+            'color:white; text-decoration:none; border-radius:6px; font-weight:bold;">'
+            '👉 Google AI Studio에서 키 발급받기</a>',
+            unsafe_allow_html=True
+        )
+        st.caption("💡 발급받은 키는 본인만 알 수 있도록 안전하게 보관하세요.")
 
     st.divider()
 
